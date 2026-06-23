@@ -1,5 +1,5 @@
 // ============================================================================
-// RETRO RALLY 3D - ENGINE TOTALMENTE REPARADO V5.1 STABLE
+// RETRO RALLY 3D - ENGINE TOTALMENTE REPARADO V5.2 STABLE (PODIUM FIX)
 // ============================================================================
 
 const canvas = document.getElementById('gameCanvas');
@@ -237,7 +237,7 @@ function updatePhysicsEngine(dt) {
     if (timeLeft <= 0) {
         timeLeft = 0; 
         gameState = 'GAME_OVER';
-        showEndScreen("TIEMPO AGOTADO\nNo lograste llegar a la meta.");
+        showEndScreen("TIEMPO AGOTADO\nNo lograste llegar a la meta.", false);
         return;
     }
 
@@ -292,7 +292,7 @@ function updatePhysicsEngine(dt) {
         damage = Math.min(100, damage + 4);
         if (damage >= 100) {
             gameState = 'GAME_OVER';
-            showEndScreen("VEHÍCULO DESTRUIDO\nDaño estructural del 100%.");
+            showEndScreen("VEHÍCULO DESTRUIDO\nDaño estructural del 100%.", false);
             return;
         }
     }
@@ -310,7 +310,12 @@ function updatePhysicsEngine(dt) {
             let finalRank = calculateRealRacePosition(true); 
             gameState = 'GAME_OVER';
             speed = 0;
-            showEndScreen(`¡CARRERA FINALIZADA!\nPosición: P${finalRank}\nPuntuación Total: ${score + Math.floor(timeLeft * 100)}`);
+            
+            // Condición solicitada: Podio (P1, P2, P3) es victoria, el resto es pérdida.
+            let reachedPodium = (finalRank <= 3);
+            let messageText = `¡CARRERA FINALIZADA!\nPosición: P${finalRank}\nPuntuación Total: ${score + Math.floor(timeLeft * 100)}`;
+            
+            showEndScreen(messageText, reachedPodium);
             return;
         }
     }
@@ -355,8 +360,20 @@ function calculateRealRacePosition(raceFinished = false) {
     return rank;
 }
 
-function showEndScreen(text) {
-    document.getElementById('goTitle').innerText = (damage >= 100 || timeLeft <= 0) ? "FIN DE CARRERA" : "¡VICTORIA!";
+// LÓGICA DE GANAR/PERDER CORREGIDA
+function showEndScreen(text, isVictory) {
+    const titleElement = document.getElementById('goTitle');
+    
+    if (isVictory) {
+        titleElement.innerText = "¡VICTORIA!";
+        titleElement.style.textShadow = "0 0 10px #00ffcc";
+        titleElement.style.color = "#00ffcc"; // Verde neón para el podio
+    } else {
+        titleElement.innerText = "HAS PERDIDO";
+        titleElement.style.textShadow = "0 0 10px #ff0055";
+        titleElement.style.color = "#ff0055"; // Rojo neón para derrotas o fallos
+    }
+
     document.getElementById('goReason').innerText = text;
     document.getElementById('menuGameOver').classList.remove('hidden');
 }
@@ -379,7 +396,6 @@ function project3D(point, cameraX, cameraY, cameraZ, depth) {
 }
 
 function drawChampionshipHorizon(horizonY) {
-    // Capa de montañas lejanas
     ctx.fillStyle = '#1c1026';
     ctx.beginPath(); ctx.moveTo(0, HEIGHT); ctx.lineTo(0, horizonY);
     for (let i = 0; i <= WIDTH; i += 40) {
@@ -388,7 +404,6 @@ function drawChampionshipHorizon(horizonY) {
     }
     ctx.lineTo(WIDTH, HEIGHT); ctx.closePath(); ctx.fill();
 
-    // Capa cercana
     ctx.fillStyle = '#2d163d';
     ctx.beginPath(); ctx.moveTo(0, HEIGHT); ctx.lineTo(0, horizonY);
     for (let i = 0; i <= WIDTH; i += 50) {
@@ -399,7 +414,7 @@ function drawChampionshipHorizon(horizonY) {
 }
 
 function executeGraphicsRender() {
-    if (trackSegments.length === 0) return; // Si la pista no está armada, no limpia ni dibuja para evitar crasheos
+    if (trackSegments.length === 0) return;
 
     let shakeX = 0, shakeY = 0;
     if (gameState === 'RUNNING' && speed > 20) {
@@ -408,7 +423,6 @@ function executeGraphicsRender() {
         shakeY = (Math.random() - 0.5) * shk;
     }
 
-    // Dibujo del Cielo Base
     let skyGrad = ctx.createLinearGradient(0, 0, 0, HEIGHT / 2);
     skyGrad.addColorStop(0, '#04020a'); skyGrad.addColorStop(0.6, '#8a1f00'); skyGrad.addColorStop(1, '#e57c00');
     ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -432,7 +446,6 @@ function executeGraphicsRender() {
     let dx = -(playerSegment.curve * playerPercent);
     let xAccum = 0;
 
-    // Dibujar pista en proyección pseudo-3D de atrás hacia adelante
     for (let i = 0; i < DRAW_DISTANCE; i++) {
         let currentIdx = (startIdx + i) % trackSegments.length;
         let seg = trackSegments[currentIdx];
@@ -451,7 +464,6 @@ function executeGraphicsRender() {
 
         if (pt1.screen.y >= maxy || pt2.screen.y >= maxy || scale <= 0) continue;
 
-        // Dibujar polígonos del tramo
         ctx.fillStyle = seg.color.grass; 
         ctx.fillRect(0, pt2.screen.y, WIDTH, (pt1.screen.y + 1) - pt2.screen.y);
         
@@ -463,14 +475,13 @@ function executeGraphicsRender() {
         ctx.fillStyle = seg.color.road;
         ctx.beginPath(); ctx.moveTo(pt1.screen.x - pt1.screen.w, pt1.screen.y + 1); ctx.lineTo(pt1.screen.x + pt1.screen.w, pt1.screen.y + 1); ctx.lineTo(pt2.screen.x + pt2.screen.w, pt2.screen.y); ctx.lineTo(pt2.screen.x - pt2.screen.w, pt2.screen.y); ctx.closePath(); ctx.fill();
         
-        if (seg.index === 0) { // Línea de meta cuadriculada
+        if (seg.index === 0) { 
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(pt1.screen.x - pt1.screen.w, pt2.screen.y, pt1.screen.w * 2, (pt1.screen.y - pt2.screen.y) * 0.4);
         }
 
         maxy = pt1.screen.y;
 
-        // Buscar si hay rivales en este segmento exacto de la pista
         for (let cp of opponents) {
             let cpSeg = Math.floor(cp.position / SEGMENT_LENGTH) % trackSegments.length;
             if (cpSeg === seg.index) {
@@ -479,14 +490,12 @@ function executeGraphicsRender() {
         }
     }
 
-    // Render de partículas de polvo/tierra
     for (let p of particles) {
         ctx.fillStyle = p.color; ctx.globalAlpha = p.alpha; ctx.beginPath();
         ctx.arc(WIDTH / 2 + p.x + shakeX, p.y + shakeY, p.size, 0, Math.PI * 2); ctx.fill();
     }
     ctx.globalAlpha = 1.0;
 
-    // Dibujar autos rivales (En orden inverso de profundidad)
     for (let i = spritesToRender.length - 1; i >= 0; i--) {
         let s = spritesToRender[i];
         let spriteX = Math.round(s.sx + (s.scale * s.cp.playerX * ROAD_WIDTH * WIDTH / 2));
@@ -499,7 +508,6 @@ function executeGraphicsRender() {
         }
     }
 
-    // Render del auto propio del jugador
     if (gameState === 'RUNNING' || gameState === 'COUNTDOWN') {
         const cW = 190, cH = 130;
         const cX = (WIDTH / 2) - (cW / 2) + (steerInput * 35) + shakeX;
@@ -507,10 +515,10 @@ function executeGraphicsRender() {
         let isBraking = keys.down || !keys.up;
 
         let colBody = (selectedVehicleIdx === 0) ? '#ff2a00' : (selectedVehicleIdx === 1) ? '#0066ff' : '#ccaa00';
-        ctx.fillStyle = '#0f0f14'; ctx.fillRect(cX + 6, cY + cH - 35, 24, 35); ctx.fillRect(cX + cW - 30, cY + cH - 35, 24, 35); // Ruedas
-        ctx.fillStyle = colBody; ctx.fillRect(cX, cY + 25, cW, cH - 40); // Chasis
-        ctx.fillStyle = '#14161f'; ctx.fillRect(cX + 16, cY + 35, cW - 32, 25); // Parabrisas
-        ctx.fillStyle = isBraking ? '#ff1111' : '#660000'; ctx.fillRect(cX + 8, cY + cH - 28, 22, 10); ctx.fillRect(cX + cW - 30, cY + cH - 28, 22, 10); // Luces de freno
+        ctx.fillStyle = '#0f0f14'; ctx.fillRect(cX + 6, cY + cH - 35, 24, 35); ctx.fillRect(cX + cW - 30, cY + cH - 35, 24, 35); 
+        ctx.fillStyle = colBody; ctx.fillRect(cX, cY + 25, cW, cH - 40); 
+        ctx.fillStyle = '#14161f'; ctx.fillRect(cX + 16, cY + 35, cW - 32, 25); 
+        ctx.fillStyle = isBraking ? '#ff1111' : '#660000'; ctx.fillRect(cX + 8, cY + cH - 28, 22, 10); ctx.fillRect(cX + cW - 30, cY + cH - 28, 22, 10); 
     }
 
     drawHUD();
@@ -525,7 +533,6 @@ function drawHUD() {
         return;
     }
 
-    // Marcadores del panel izquierdo
     ctx.fillStyle = timeLeft < 15 ? '#ff3333' : '#ffffff'; ctx.font = 'bold 24px monospace';
     ctx.fillText(`TIEMPO: ${Math.ceil(timeLeft)}s`, 25, 45);
 
@@ -539,7 +546,6 @@ function drawHUD() {
     ctx.fillStyle = '#8a9ab0'; ctx.font = '15px monospace';
     ctx.fillText(`DAÑO: ${damage}%`, 25, 120);
 
-    // Marcadores del panel derecho
     ctx.fillStyle = '#ffff00'; ctx.font = 'bold 22px monospace';
     ctx.fillText(`PUNTOS: ${score}`, WIDTH - 220, 45);
     
@@ -569,6 +575,6 @@ window.resetRaceState = resetRaceState;
 
 window.onload = function() {
     initInputSystem();
-    buildSelectedChampionshipTrack(0); // Forzar carga estructural por defecto para evitar pantallas vacías
+    buildSelectedChampionshipTrack(0); 
     runMasterGameLoop();
 };
